@@ -1396,6 +1396,16 @@
 <wire x1="121.92" y1="81.28" x2="127" y2="81.28" width="0.1524" layer="91"/>
 <label x="127" y="81.28" size="1.016" layer="95" xref="yes"/>
 </segment>
+<segment>
+<pinref part="POWER" gate="G$1" pin="2"/>
+<wire x1="35.56" y1="127" x2="30.48" y2="127" width="0.1524" layer="91"/>
+<label x="30.48" y="127" size="1.016" layer="95" rot="R180" xref="yes"/>
+</segment>
+<segment>
+<pinref part="ENCODER" gate="A" pin="1"/>
+<wire x1="33.02" y1="104.14" x2="27.94" y2="104.14" width="0.1524" layer="91"/>
+<label x="27.94" y="104.14" size="1.016" layer="95" rot="R180" xref="yes"/>
+</segment>
 </net>
 <net name="GND1" class="0">
 <segment>
@@ -1409,16 +1419,6 @@
 <pinref part="U$1" gate="G$1" pin="GND@3"/>
 <wire x1="96.52" y1="99.06" x2="111.76" y2="99.06" width="0.1524" layer="91"/>
 <label x="109.22" y="99.06" size="1.778" layer="95" rot="R180"/>
-</segment>
-<segment>
-<pinref part="ENCODER" gate="A" pin="1"/>
-<wire x1="33.02" y1="104.14" x2="27.94" y2="104.14" width="0.1524" layer="91"/>
-<label x="27.94" y="104.14" size="1.016" layer="95" rot="R180" xref="yes"/>
-</segment>
-<segment>
-<pinref part="POWER" gate="G$1" pin="2"/>
-<wire x1="35.56" y1="127" x2="30.48" y2="127" width="0.1524" layer="91"/>
-<label x="30.48" y="127" size="1.016" layer="95" rot="R180" xref="yes"/>
 </segment>
 </net>
 </nets>
