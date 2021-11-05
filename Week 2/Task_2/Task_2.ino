@@ -1,23 +1,24 @@
 #include <ros.h>
-#include <std_msgs/String.h>
+//#include <std_msgs/Float32.h>
+#include <std_msgs/Int32.h>
 
 #define PPR 2048 // pulses per revolution
 
 // variables used for ros communication
 ros::NodeHandle  nh;
 
-std_msgs::String str_msg;
+std_msgs::Int32 str_msg;
 ros::Publisher chatter("chatter", &str_msg);
 
-char encoder_data[60];
+//char encoder_data[60];
 
 
 // setting encoder pins
-#define B PB_12
-#define A PB_13
+#define B PB12
+#define A PB13
 
 // counter for pulses
-int counter = 0;
+long counter = 0;
 
 // interrupt function for a
 void ISR_A(){
@@ -39,6 +40,8 @@ void ISR_B(){
 
 void setup() {
   // initiailizing ros node and publisher
+  (nh.getHardware())->setPort(&Serial1);
+  (nh.getHardware())->setBaud(115200);
   nh.initNode();
   nh.advertise(chatter);
   // setting pin modes and ataching interrupts
@@ -54,10 +57,10 @@ void loop() {
   float degree = counter / 4 / PPR * 360;
 
   // adding degree into encoder data string
-  sprintf(encoder_data, "Current degree of rotation of encoder: %.2f\n", degree);
+  //sprintf(encoder_data, "Current degree of rotation of encoder: %.2f\n", degree);
   
   // adding encoder data to msg to be published
-  str_msg.data = encoder_data;
+  str_msg.data = counter;
 
   // publishing msg
   chatter.publish(&str_msg);
