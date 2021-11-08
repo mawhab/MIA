@@ -29,6 +29,8 @@ ros::Subscriber<std_msgs::Float32> sub(topic, &inputRead); // subscriber for our
 long counter = 0; // counter for pulses
 long prevCount = 0; // extra variable to check if velocity is 0
 float velocity; // variable to hold velocity based on encoder readings
+float prevVelocity; // variable to hold previous velocity, used in filter
+float filteredVelocity = 0; // filtered velocity
 long currTime; // current time
 long prevTime_encoder; // previous time for use by encoder
 
@@ -143,9 +145,14 @@ int calculatePID(){
   prevTime_PID = currTime; // setting new prev time
   if(prevCount == counter){// if prevcount is equal to count then the encoder isnt moving
     velocity = 0; // set velocity to 0
+    filteredVelocity = 0;// set prev filtered velocity to 0
   }
+  
+  filteredVelocity = 0.854*filteredVelocity + 0.0728*velocity + 0.0728*prevVelocity; // applying a low pass filter (25 Hz cutoff)
+  prevVelocity = velocity;
+  
   prevCount = counter; // switch counter vars
-  error = SPspeed - velocity; // calculating error
+  error = SPspeed - filteredVelocity; // calculating error
   errorI += error * dT; // getting I 
   errorD = error / dT; // getting D
   return error*kp + errorI*ki + errorD*kd; // return error multiplied by constants
