@@ -2,22 +2,21 @@
 #include <std_msgs/Float32.h>
 
 // motor driver pins
-#define PWM PA7
-#define DIRECTION PA6
+#define PWM PA0
+#define DIRECTION PA1
 
 // encoder pins
-#define B PB12
-#define A PB13
+#define B PA4
+#define A PA5
 
-#define PPR 2048 // pulses per revolution
+#define PPR 540 // pulses per revolution
 
 // function definitions
-void calcVelocity();
 void ISR_A();
 void ISR_B();
-void setMotor(int dir, int voltage);
 void inputRead(const std_msgs::Float32 &speedmsg);
-int calculatePID();
+float calculatePID();
+int mapPIDtoVolt(float rpm);
 
 
 // ros variables
@@ -26,134 +25,136 @@ ros::NodeHandle nh; //ros handler
 ros::Subscriber<std_msgs::Float32> sub(topic, &inputRead); // subscriber for our topic
 
 // encoder variables
-long counter = 0; // counter for pulses
-long prevCount = 0; // extra variable to check if velocity is 0
-float velocity; // variable to hold velocity based on encoder readings
-float prevVelocity; // variable to hold previous velocity, used in filter
-float filteredVelocity = 0; // filtered velocity
+volatile double counter = 0; // counter for pulses
+double prevCount = 0; // extra variable to check if velocity is 0
+float velocity; // variable to hold current motor speed based on encoder readings
 long currTime; // current time
-long prevTime_encoder; // previous time for use by encoder
 
 float SPspeed; // our set point that we want to reach
 float error; // error to be compensated
-float errorI; // error to be compensated in integral
-float errorD; // error to be compensated in differential
+float prevError=0; // to be used by differential term
+float integralTerm; // error to be compensated in integral
+float differentialTerm; // error to be compensated in differential
 int outputV; // output voltage by PID
-int outputD; // direction of output
 float kp; // P constant
 float ki; // I constant
 float kd; // D constant
-long prevTime_PID; // prev time for use by PID
+long prevTime = 0; // prev time for use by PID
 
+HardwareSerial Serial3(PB11, PB10);
 
 void setup() {
   // setting up ros
-  (nh.getHardware())->setPort(&Serial1); // setting serial port for ros
-  (nh.getHardware())->setBaud(115200); // set baud rate for ros
-  nh.initNode(); // initializing node handler
-  nh.subscribe(sub); // subscribing to topic
+//  (nh.getHardware())->setPort(&Serial1); // setting serial port for ros
+//  (nh.getHardware())->setBaud(115200); // set baud rate for ros
+//  nh.initNode(); // initializing node handler
+//  nh.subscribe(sub); // subscribing to topic
 
   // setting PID constants
-  kp= 0;
+  kp = 10;
   ki = 0;
   kd = 0;
+  SPspeed = 0;
 
   // setting pin modes
-  pinMode(A, INPUT);
-  pinMode(B, INPUT);
+  pinMode(A, INPUT_PULLUP);
+  pinMode(B, INPUT_PULLUP);
   pinMode(PWM, OUTPUT);
   pinMode(DIRECTION, OUTPUT);
 
   // attaching interrupts
   attachInterrupt(digitalPinToInterrupt(A), ISR_A, CHANGE);
   attachInterrupt(digitalPinToInterrupt(B), ISR_B, CHANGE);
+
+  Serial3.begin(9600);
 }
 
 void loop() {
-  outputV = calculatePID(); // calculating PID values
-  if(outputV<0){ // if value is negative adjust direction
-    outputD = -1;
-  }else{
-    outputD = 1;
+  if(Serial3.available()){
+    SPspeed = Serial3.readString().toInt();
   }
-  outputV = abs(outputV); // get magnitude of voltage
   
-  if(outputV>255) // if output is higher than possible reduce it to max
-    outputV = 255;
+  outputV = mapPIDtoVolt(calculatePID()); // calculating PID values and mapping them to volt
+  //Serial3.println(outputV);
+  Serial3.println(counter);
+  if (outputV < 0) { // if value is negative adjust direction
+    digitalWrite(DIRECTION, LOW);
+  } else {
+    digitalWrite(DIRECTION, HIGH);
+  }
+  outputV = abs(outputV); // get magnitude of voltage 
+
+  if (outputV > 65535) // if output is higher than possible reduce it to max
+    outputV = 65535;
+
   
-  setMotor(outputD, outputV); // set motor speed and direction
-  
-  nh.spinOnce();// node handler spin
+  analogWrite(PWM, outputV); // set motor speed
+  //Serial3.println(counter);
+  //Serial3.println(velocity);
+
+  //delay(10);
+
+  // nh.spinOnce();// node handler spin
 }
 
 
 
 //----------------------------FUNCTIONS---------------------------------
 
-// calculate current velocity based on ecoder readings
-void calcVelocity(int increment){
-  currTime = micros(); // getting current time
-  float dTime = (currTime - prevTime_encoder) / 1000000.0; // getting difference in time between this pulse and last pulse
-  prevTime_encoder = currTime; // switching time
-  velocity = increment / dTime; // getting velocity based on time between pulses
-  velocity *= 60/PPR; // multiplying by 60 and dividing by PPR to get rpm instead of counts/second
-}
-
 // interrupt function for a
-void ISR_A(){
-  int increment;
-  if(digitalRead(A)!=digitalRead(B)){
-    increment = 1;
-  }else{
-    increment = -1;
+void ISR_A() {
+  if (digitalRead(A) != digitalRead(B)) {
+    counter++;
+  } else {
+    counter--;
   }
-  counter += increment;
-  calcVelocity(increment);
 }
 
 // interrupt function for b
-void ISR_B(){
-  int increment;
-  if(digitalRead(A)!=digitalRead(B)){
-    increment = -1;
-  }else{
-    increment = 1;
+void ISR_B() {
+  if (digitalRead(A) == digitalRead(B)) {
+    counter++;
+  } else {
+    counter--;
   }
-  counter += increment;
-  calcVelocity(increment);
 }
 
-// setting motor speed and direciton
-void setMotor(int dir, int voltage){
-  if(dir==1)
-    digitalWrite(DIRECTION, HIGH);
-  else if(dir==-1){
-    digitalWrite(DIRECTION, LOW);
-  }
-  analogWrite(PWM, voltage);
+
+// map PID output (given in rpm) to PWM signal (given in voltage)
+int mapPIDtoVolt(float rpm){
+  return rpm * 65535 / 350;
 }
 
 // parsing message upon receiving from ros topic
-void inputRead(const std_msgs::Float32 &speedmsg){
+void inputRead(const std_msgs::Float32 &speedmsg) {
   SPspeed = speedmsg.data;
 }
 
 // calculates PID output value
-int calculatePID(){
+float calculatePID() {
   currTime = micros(); // getting current time
-  float dT = (currTime - prevTime_PID) / 1000000.0; // getting difference in time between last calculation
-  prevTime_PID = currTime; // setting new prev time
-  if(prevCount == counter){// if prevcount is equal to count then the encoder isnt moving
-    velocity = 0; // set velocity to 0
-    filteredVelocity = 0;// set prev filtered velocity to 0
-  }
+  float dT = (currTime - prevTime) / 1000000.0; // getting difference in time between last calculation
+  prevTime = currTime; // setting new prev time
+
+//  Serial3.print("before");
+//  Serial3.println(velocity);
+  velocity = 1.0*(counter) / dT; // get counts per second from encoder feedback
+  velocity *= 60 / 540.0; // get rpm from counts/sec
+  prevCount = counter; // setting new previous count
+  counter = 0;
+//  Serial3.print("after");
+//  Serial3.println(velocity);
+
+  if(SPspeed>350) // if given set point is higher than motor capabilities, reduce down
+    SPspeed = 350;
+    
+  if(SPspeed<0) // if given set point is negative, set to 0
+    SPspeed = 0;
+    
+  error = SPspeed - velocity; // calculating error
+  integralTerm += error * dT; // getting I term
+  differentialTerm = (error - prevError) / dT; // getting D term
+  prevError = error; // setting prev error
+  return error * kp + integralTerm * ki + differentialTerm * kd; // return error multiplied by constants
   
-  filteredVelocity = 0.854*filteredVelocity + 0.0728*velocity + 0.0728*prevVelocity; // applying a low pass filter (25 Hz cutoff)
-  prevVelocity = velocity;
-  
-  prevCount = counter; // switch counter vars
-  error = SPspeed - filteredVelocity; // calculating error
-  errorI += error * dT; // getting I 
-  errorD = error / dT; // getting D
-  return error*kp + errorI*ki + errorD*kd; // return error multiplied by constants
 }
